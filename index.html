@@ -1,0 +1,743 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Peak UBG — Proxy Hub</title>
+
+  <!-- FONT (same as dashboard) -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;600;700;800&display=swap" rel="stylesheet">
+
+  <style>
+    /* RESET & BASE */
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html,body { width:100%; min-height:100%; background:#020308; color:#e6faff; font-family:"Space Grotesk", system-ui, -apple-system, "Segoe UI", BlinkMacSystemFont, sans-serif; -webkit-font-smoothing:antialiased; -moz-osx-font-smoothing:grayscale; }
+    body { display:flex; align-items:flex-start; justify-content:center; min-height:100vh; overflow-y:auto; padding:28px 20px 40px; }
+
+    /* STARFIELD + SCANLINES */
+    #peak-starfield { position:fixed; inset:0; z-index:0; background: radial-gradient(circle at top, #1a1f2b 0%, #05060a 55%, #020308 100%); }
+    .peak-scanlines { position:fixed; inset:0; pointer-events:none; z-index:1; background: linear-gradient(rgba(18,16,16,0) 50%, rgba(0,242,255,0.03) 50%); background-size:100% 4px; mix-blend-mode:screen; opacity:0.7; }
+
+    /* APP LAYOUT */
+    #peak-ubg-app { position:relative; z-index:2; width:100%; max-width:1400px; }
+    .peak-dashboard { display:flex; flex-direction:column; gap:18px; }
+
+    /* TOP ROW */
+    .top-row { display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap; }
+    .top-left { display:flex; gap:12px; align-items:center; }
+    .peak-logo-svg { width:64px; height:64px; fill:#fff; filter:drop-shadow(0 0 12px rgba(255,255,255,0.12)); }
+    .page-title { font-weight:900; letter-spacing:0.12em; font-size:clamp(28px,4vw,38px); color:#e6faff; text-shadow:0 0 12px rgba(0,242,255,0.18); }
+
+    .top-controls { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+    .peak-link { -webkit-appearance:none; appearance:none; border:none; cursor:pointer; padding:10px 16px; border-radius:999px; background:radial-gradient(circle at top left, rgba(0,242,255,0.18), rgba(0,10,20,0.6)); color:#fff; border:1px solid rgba(0,242,255,0.45); font-weight:700; letter-spacing:0.06em; }
+
+    /* SEARCH */
+    .search-bar { display:flex; gap:8px; align-items:center; width:100%; max-width:760px; margin-top:6px; }
+    .search-bar input[type="search"] {
+      flex:1; padding:10px 12px; border-radius:12px; border:1px solid rgba(255,255,255,0.06);
+      background: rgba(255,255,255,0.02); color:#e6faff; font-size:16px;
+    }
+    .search-bar button { padding:10px 12px; border-radius:10px; cursor:pointer; border:1px solid rgba(255,255,255,0.04); background:rgba(255,255,255,0.02); color:#cffeff; }
+
+    /* GRID */
+    .hub-grid { margin-top:6px; display:grid; grid-template-columns: repeat(2, minmax(0, 1fr)); grid-auto-rows: 1fr; gap:18px; align-items:stretch; }
+    @media (max-width:900px) { .hub-grid { grid-template-columns: 1fr; grid-auto-rows: auto; } }
+
+    /* CARD */
+    .peak-card { background: rgba(10,20,30,0.45); border-radius:14px; padding:20px; border:2px solid rgba(0,242,255,0.18); box-shadow: 0 8px 28px rgba(0,242,255,0.03), inset 0 0 12px rgba(0,242,255,0.02); display:flex; flex-direction:column; gap:14px; min-height:180px; transition: transform .18s ease, box-shadow .18s ease; height:100%; }
+    .peak-card.favorite { border-color: rgba(255,200,50,0.9); box-shadow: 0 12px 36px rgba(255,200,50,0.06); }
+
+    .peak-card:hover { transform: translateY(-6px); box-shadow: 0 14px 40px rgba(0,242,255,0.06); }
+
+    .proxy-header { display:flex; align-items:center; justify-content:space-between; gap:12px; }
+    .proxy-title { font-weight:900; font-size:20px; color:#fff; }
+    .proxy-sub { font-size:14px; color:#9befff; opacity:0.95; }
+
+    .proxy-actions { display:flex; gap:8px; align-items:center; }
+    .proxy-toggle { -webkit-appearance:none; appearance:none; border:none; cursor:pointer; padding:8px 12px; border-radius:999px; background:linear-gradient(90deg, rgba(0,242,255,0.08), rgba(0,242,255,0.02)); color:#cffeff; border:1px solid rgba(0,242,255,0.12); font-weight:700; }
+    .fav-btn { font-size:18px; padding:8px 10px; border-radius:10px; cursor:pointer; background:rgba(255,255,255,0.02); color:#ffd86b; border:1px solid rgba(255,255,255,0.03); }
+    .fav-btn.inactive { color:#cfeaff; }
+
+    .links-panel { overflow:hidden; transition: max-height .26s cubic-bezier(.2,.9,.2,1), opacity .2s; max-height: 0; opacity: 0; }
+    .links-panel.open { opacity: 1; max-height: 640px; }
+
+    .link-item { display:flex; gap:8px; align-items:center; justify-content:space-between; padding:10px 12px; border-radius:10px; background: rgba(0,242,255,0.03); border:1px solid rgba(0,242,255,0.04); margin-top:10px; }
+    .link-left { display:flex; gap:8px; align-items:flex-start; flex-direction:column; max-width:70%; }
+    .link-text { color:#e6faff; font-weight:800; font-size:16px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .link-url { color:#9befff; font-size:13px; word-break:break-all; opacity:0.95; }
+
+    .link-actions { display:flex; gap:8px; }
+    .icon-btn { -webkit-appearance:none; appearance:none; border:none; cursor:pointer; padding:6px 10px; border-radius:8px; background:rgba(255,255,255,0.02); color:#cffeff; border:1px solid rgba(255,255,255,0.02); font-weight:700; font-size:13px; }
+
+    .card-footer { margin-top:auto; font-size:13px; color:#9befff; opacity:0.9; }
+
+    /* minimal helpers used by the new UI elements — visual consistent with existing style */
+    .inline-input { padding:8px 10px; border-radius:10px; background:rgba(255,255,255,0.02); border:1px solid rgba(255,255,255,0.04); color:#e6faff; }
+    .muted { color:#9befff; opacity:0.85; }
+    .status-pill { font-size:13px; padding:6px 10px; border-radius:999px; background:rgba(0,0,0,0.16); border:1px solid rgba(255,255,255,0.03); color:#cffeff; }
+  </style>
+</head>
+<body>
+  <canvas id="peak-starfield" aria-hidden="true"></canvas>
+  <div class="peak-scanlines" aria-hidden="true"></div>
+
+  <div id="peak-ubg-app">
+    <div class="peak-dashboard">
+      <div class="top-row">
+        <div class="top-left">
+          <svg class="peak-logo-svg" viewBox="0 0 100 100" aria-hidden="true" focusable="false"><path d="M50 15 L90 85 L10 85 Z"></path></svg>
+          <div>
+            <div class="page-title">Proxy Hub</div>
+            <div class="search-bar" style="margin-top:10px;">
+              <input id="searchInput" type="search" placeholder="Search your added proxies..." aria-label="Search proxies" />
+              <button id="clearSearch" title="Clear search">Clear</button>
+            </div>
+
+            <!-- Add/Import UI (hidden by default) -->
+            <div id="addImportRow" style="margin-top:10px; display:flex; gap:8px; align-items:center;">
+              <div id="addForm" style="display:none; gap:8px; align-items:center;">
+                <input id="addName" class="inline-input" type="text" placeholder="Name" aria-label="Proxy name" />
+                <input id="addSubtitle" class="inline-input" type="text" placeholder="Subtitle (optional)" aria-label="Proxy subtitle" />
+                <input id="addUrl" class="inline-input" style="min-width:300px;" type="text" placeholder="Primary URL" aria-label="Proxy url" />
+                <button id="addConfirm" class="peak-link">Add</button>
+                <button id="addCancel" class="peak-link">Cancel</button>
+              </div>
+
+              <div id="importAreaWrapper" style="display:none; width:100%; margin-top:8px; flex-direction:column;">
+                <textarea id="importText" style="width:100%; min-height:90px; padding:10px; border-radius:10px; background:rgba(255,255,255,0.02); color:#e6faff; border:1px solid rgba(255,255,255,0.04);" placeholder='Paste JSON: [{"id":"x","name":"..","subtitle":"..","links":[{"title":"..","url":".."}], "custom":true}, ...]'></textarea>
+                <div style="display:flex; gap:8px; margin-top:8px;">
+                  <button id="importConfirm" class="peak-link">Import</button>
+                  <button id="importCancel" class="peak-link">Cancel</button>
+                </div>
+              </div>
+            </div>
+
+          </div>
+        </div>
+
+        <div class="top-controls" aria-hidden="false">
+          <button id="addBtn" class="peak-link" title="Add proxy">Add</button>
+          <button id="importBtn" class="peak-link" title="Import proxies (JSON)">Import</button>
+          <button id="exportBtn" class="peak-link" title="Export proxies (JSON)">Export</button>
+          <button id="clearCustomBtn" class="peak-link" title="Clear custom proxies">Clear</button>
+          <button id="back-btn" class="peak-link" title="Back to dashboard">Back</button>
+          <button id="partners-btn" class="peak-link" title="Partners">Partners</button>
+        </div>
+      </div>
+
+      <div class="hub-grid" id="hubGrid" role="list" aria-live="polite">
+        <!-- Proxy cards are injected by script -->
+      </div>
+    </div>
+  </div>
+
+<script>
+/*
+  Modified Proxy Hub: show ONLY the proxies you added (custom proxies).
+  - Defaults remain in the file but are not displayed.
+  - All add/import/export/clear functions operate on the custom list.
+  - This preserves your custom entries and only shows them in the hub UI.
+*/
+
+/* Navigation URLs */
+const dashboardUrl = 'https://sites.google.com/view/studypacketwork/home?authuser=0';
+const partnersUrl  = 'https://sites.google.com/view/studypacketwork/partners?authuser=0';
+
+/* Local storage keys */
+const FAVS_KEY       = 'peak-proxies-favs-v1';
+const PROXIES_KEY    = 'peak-proxies-custom-v1'; // stores only custom proxies
+const DEFAULT_KEY    = 'peak-proxy-default-v1';
+
+/* ---------- DATA: defaults kept for reference but NOT shown ---------- */
+const PROXIES = [
+  {
+    id: 'truffled',
+    name: 'truffled',
+    subtitle: 'truffel',
+    imageSrc: '',
+    links: [
+      { title: ' 1', url: 'https://educational.radissontucson.com/' },
+      { title: ' 2', url: 'https://vacation.briaquaticcabinets.com/' }
+    ]
+  },
+  {
+    id: 'overcloacked',
+    name: 'Overcloacked',
+    subtitle: 'best proxy',
+    imageSrc: '',
+    links: [
+      { title: 'link 1', url: 'https://betherethe.sametimetomorrow.net/' },
+      { title: 'link 2', url: 'https://fast.vandrekalenderen.dk/' }
+    ]
+  },
+  {
+    id: 'fern',
+    name: 'fern',
+    subtitle: 'epic',
+    imageSrc: '',
+    links: [
+      { title: 'link 1', url: 'https://apple1.vandrekalenderen.dk/' }
+    ]
+  },
+  {
+    id: 'infamous',
+    name: 'infamous',
+    subtitle: 'evil',
+    imageSrc: '',
+    links: [
+      { title: 'link 1', url: 'https://humanhistoryovertime.firebaseapp.com/' },
+      { title: 'link 2', url: '' }
+    ]
+  },
+  {
+    id: 'void-network',
+    name: 'Void network',
+    subtitle: 'space',
+    imageSrc: '',
+    links: [
+      { title: 'Link 1', url: 'https://elaforstudents.cima-diagnosticos.com.mx/' },
+      { title: 'Link 2', url: 'https://humanhistoryovertime.web.app/' }
+    ]
+  },
+  {
+    id: 'endis',
+    name: 'Endis',
+    subtitle: 'poptart',
+    imageSrc: '',
+    links: [
+      { title: 'link 1', url: 'musmuszubsuckmydick.klinikkenoj.dk' },
+      { title: 'link 2', url: 'justgimmemymoney.vandrekalenderen.dk' }
+    ]
+  }
+];
+/* ---------- end defaults (not displayed) ---------- */
+
+/* --- Persistence helpers --- */
+function loadJSON(key, fallback) {
+  try {
+    const raw = localStorage.getItem(key);
+    if (!raw) return fallback;
+    return JSON.parse(raw);
+  } catch (e) {
+    console.warn('loadJSON failed', key, e);
+    return fallback;
+  }
+}
+function saveJSON(key, obj) {
+  try { localStorage.setItem(key, JSON.stringify(obj)); } catch (e) { console.warn('saveJSON failed', key, e); }
+}
+
+/* Fav map */
+let favMap = loadJSON(FAVS_KEY, {});
+let customProxies = loadJSON(PROXIES_KEY, []); // array of proxy objects (custom only)
+let defaultProxyUrl = localStorage.getItem(DEFAULT_KEY) || null;
+
+/* Utility */
+function el(tag, cls){ const e=document.createElement(tag); if(cls) e.className = cls; return e; }
+function isFav(id){ return !!favMap[id]; }
+function saveFavs(){ saveJSON(FAVS_KEY, favMap); }
+
+/* NOTE: getAllProxies now RETURNS ONLY custom proxies (the proxies you added/imported).
+   Defaults in PROXIES remain in the file for reference but are intentionally excluded from the UI. */
+function getAllProxies() {
+  return Array.isArray(customProxies) ? customProxies.map(p => ({...p, custom:true})) : [];
+}
+
+/* --- Search --- */
+let currentQuery = '';
+const searchInput = document.getElementById('searchInput');
+const clearSearchBtn = document.getElementById('clearSearch');
+
+searchInput.addEventListener('input', (e) => {
+  currentQuery = e.target.value.trim().toLowerCase();
+  buildHub(currentQuery);
+});
+clearSearchBtn.addEventListener('click', () => {
+  searchInput.value = '';
+  currentQuery = '';
+  buildHub('');
+  searchInput.focus();
+});
+
+/* --- Add / Import UI wiring --- */
+const addBtn = document.getElementById('addBtn');
+const importBtn = document.getElementById('importBtn');
+const exportBtn = document.getElementById('exportBtn');
+const clearCustomBtn = document.getElementById('clearCustomBtn');
+
+const addForm = document.getElementById('addForm');
+const addName = document.getElementById('addName');
+const addSubtitle = document.getElementById('addSubtitle');
+const addUrl = document.getElementById('addUrl');
+const addConfirm = document.getElementById('addConfirm');
+const addCancel = document.getElementById('addCancel');
+
+const importAreaWrapper = document.getElementById('importAreaWrapper');
+const importText = document.getElementById('importText');
+const importConfirm = document.getElementById('importConfirm');
+const importCancel = document.getElementById('importCancel');
+
+/* show/hide handlers */
+addBtn.addEventListener('click', ()=> {
+  importAreaWrapper.style.display = 'none';
+  addForm.style.display = addForm.style.display === 'none' ? 'flex' : 'none';
+  if (addForm.style.display === 'flex') { addName.focus(); }
+});
+addCancel.addEventListener('click', ()=> {
+  addForm.style.display = 'none';
+  addName.value = ''; addSubtitle.value = ''; addUrl.value = '';
+});
+
+importBtn.addEventListener('click', ()=> {
+  addForm.style.display = 'none';
+  importAreaWrapper.style.display = importAreaWrapper.style.display === 'none' ? 'block' : 'none';
+  if (importAreaWrapper.style.display === 'block') importText.focus();
+});
+importCancel.addEventListener('click', ()=> {
+  importAreaWrapper.style.display = 'none';
+  importText.value = '';
+});
+
+/* Add confirm (adds to customProxies only) */
+addConfirm.addEventListener('click', ()=> {
+  const name = (addName.value||'').trim();
+  const subtitle = (addSubtitle.value||'').trim();
+  const url = (addUrl.value||'').trim();
+  if (!url) { alert('Please enter a URL for the proxy.'); return; }
+  const id = 'custom-'+Date.now();
+  const newProxy = { id, name: name || url, subtitle: subtitle || '', links: [{ title: name || url, url }], custom:true, addedAt: Date.now() };
+  customProxies.unshift(newProxy);
+  saveJSON(PROXIES_KEY, customProxies);
+  addName.value=''; addSubtitle.value=''; addUrl.value='';
+  addForm.style.display='none';
+  buildHub(currentQuery);
+});
+
+/* Export: download only custom proxies (what you added) */
+exportBtn.addEventListener('click', ()=> {
+  if (!Array.isArray(customProxies) || customProxies.length === 0) {
+    alert('No custom proxies to export.');
+    return;
+  }
+  const blob = new Blob([JSON.stringify(customProxies, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'peak-proxies-custom.json';
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+});
+
+/* Clear custom proxies */
+clearCustomBtn.addEventListener('click', ()=> {
+  if (!confirm('Clear all custom proxies? This will remove only proxies you added/imported.')) return;
+  customProxies = [];
+  saveJSON(PROXIES_KEY, customProxies);
+  // also clear default if it pointed to a removed URL
+  const allUrls = getAllProxies().map(p => (p.links && p.links[0] && p.links[0].url) || '');
+  if (defaultProxyUrl && !allUrls.includes(defaultProxyUrl)) {
+    defaultProxyUrl = null;
+    localStorage.removeItem(DEFAULT_KEY);
+  }
+  buildHub(currentQuery);
+});
+
+/* Import confirm (imports into customProxies only) */
+importConfirm.addEventListener('click', ()=> {
+  const txt = importText.value.trim();
+  if (!txt) { alert('Paste JSON to import'); return; }
+  try {
+    const parsed = JSON.parse(txt);
+    if (!Array.isArray(parsed)) throw new Error('expected array');
+    let count=0;
+    parsed.forEach(item => {
+      if (!item || !item.links) return;
+      // ensure url exists in first link
+      const u = (item.links[0] && item.links[0].url) || item.url || '';
+      if (!u) return;
+      const id = item.id || ('custom-'+Date.now() + '-' + Math.floor(Math.random()*999));
+      // skip duplicates by first-link url
+      const firstUrl = u;
+      const exists = customProxies.some(p => (p.links && p.links[0] && p.links[0].url) === firstUrl);
+      if (exists) return;
+      const newP = {
+        id,
+        name: item.name || (item.links[0] && item.links[0].url) || 'Imported',
+        subtitle: item.subtitle || '',
+        links: Array.isArray(item.links) ? item.links : [{ title: item.title || item.name || '', url: item.url || firstUrl }],
+        custom:true,
+        addedAt: item.addedAt || Date.now()
+      };
+      customProxies.push(newP);
+      count++;
+    });
+    if (count>0) {
+      saveJSON(PROXIES_KEY, customProxies);
+      importText.value='';
+      importAreaWrapper.style.display='none';
+      buildHub(currentQuery);
+      alert('Imported ' + count + ' proxies.');
+    } else {
+      alert('No new proxies were imported (duplicates or invalid format).');
+    }
+  } catch (e) {
+    alert('Import failed: invalid JSON');
+    console.warn(e);
+  }
+});
+
+/* --- Favorites toggle --- */
+function toggleFav(id) {
+  if (favMap[id]) delete favMap[id];
+  else favMap[id] = true;
+  saveFavs();
+  buildHub(currentQuery);
+}
+
+/* --- Default proxy setter --- */
+function setDefaultProxy(url) {
+  defaultProxyUrl = url;
+  if (url) localStorage.setItem(DEFAULT_KEY, url);
+  else localStorage.removeItem(DEFAULT_KEY);
+  buildHub(currentQuery);
+}
+
+/* --- Utility: safe URL fix --- */
+function ensureUrl(u) {
+  if (!u) return '';
+  if (/^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//.test(u)) return u;
+  return 'https://' + u;
+}
+
+/* --- Best-effort connectivity test (no-cors fetch with timeout) --- */
+function testUrlReachable(url, timeoutMs = 4500) {
+  return new Promise((resolve) => {
+    if (!url) return resolve(false);
+    const controller = new AbortController();
+    const t = setTimeout(()=> { controller.abort(); resolve(false); }, timeoutMs);
+    fetch(url, { method:'GET', mode:'no-cors', signal: controller.signal }).then(()=> {
+      clearTimeout(t);
+      resolve(true);
+    }).catch(()=> {
+      clearTimeout(t);
+      resolve(false);
+    });
+  });
+}
+
+/* --- Edit custom proxy (simple prompts for embed compatibility) --- */
+function editCustomProxy(proxy) {
+  if (!proxy || !proxy.custom) return;
+  const newName = prompt('Edit proxy name:', proxy.name || '');
+  if (newName === null) return; // cancelled
+  const newSubtitle = prompt('Edit subtitle (optional):', proxy.subtitle || '');
+  if (newSubtitle === null) return;
+  // edit main (first) link url
+  const firstUrl = (proxy.links && proxy.links[0] && proxy.links[0].url) || '';
+  const newUrl = prompt('Edit primary URL:', firstUrl || '');
+  if (newUrl === null) return;
+  proxy.name = (newName||'').trim() || proxy.name;
+  proxy.subtitle = (newSubtitle||'').trim();
+  if (proxy.links && proxy.links[0]) proxy.links[0].url = (newUrl||'').trim();
+  saveJSON(PROXIES_KEY, customProxies);
+  buildHub(currentQuery);
+}
+
+/* --- Remove custom proxy --- */
+function removeCustomProxy(proxy) {
+  if (!proxy || !proxy.custom) return;
+  if (!confirm('Remove custom proxy "' + (proxy.name || proxy.id) + '"?')) return;
+  customProxies = customProxies.filter(p => p.id !== proxy.id);
+  saveJSON(PROXIES_KEY, customProxies);
+  // if default pointed to removed url, clear it
+  const allUrls = getAllProxies().map(p => (p.links && p.links[0] && p.links[0].url) || '');
+  if (defaultProxyUrl && !allUrls.includes(defaultProxyUrl)) {
+    defaultProxyUrl = null;
+    localStorage.removeItem(DEFAULT_KEY);
+  }
+  buildHub(currentQuery);
+}
+
+/* --- Build UI (shows ONLY custom proxies) --- */
+function buildHub(filter='') {
+  const grid = document.getElementById('hubGrid');
+  grid.innerHTML = '';
+
+  const list = getAllProxies().filter(p => matchesQuery(p, filter));
+
+  if (list.length === 0) {
+    const note = el('div');
+    note.className = 'muted';
+    note.style.padding = '20px';
+    note.textContent = 'You have not added any custom proxies yet. Use Add or Import to add proxies.';
+    grid.appendChild(note);
+    return;
+  }
+
+  list.forEach(proxy => {
+    const card = el('div', 'peak-card');
+    card.setAttribute('role', 'listitem');
+    card.dataset.proxyId = proxy.id;
+    if (isFav(proxy.id)) card.classList.add('favorite');
+
+    // header
+    const header = el('div', 'proxy-header');
+    const left = el('div');
+    const title = el('div', 'proxy-title'); 
+    title.textContent = proxy.name || 'Unnamed';
+    left.appendChild(title);
+    if (proxy.subtitle) {
+      const sub = el('div', 'proxy-sub'); sub.textContent = proxy.subtitle; left.appendChild(sub);
+    }
+    // show default label next to subtitle if matches
+    const firstLinkUrl = (proxy.links && proxy.links[0] && proxy.links[0].url) || '';
+    if (defaultProxyUrl && defaultProxyUrl === firstLinkUrl) {
+      const def = el('div', 'proxy-sub'); def.style.fontStyle='italic'; def.textContent = 'Default proxy';
+      left.appendChild(def);
+    }
+
+    // actions area
+    const actions = el('div', 'proxy-actions');
+
+    // favorite
+    const fav = el('button', 'fav-btn');
+    fav.type='button';
+    fav.title = isFav(proxy.id) ? 'Unfavorite' : 'Favorite';
+    fav.innerText = isFav(proxy.id) ? '★' : '☆';
+    if (!isFav(proxy.id)) fav.classList.add('inactive');
+    fav.addEventListener('click', ()=> toggleFav(proxy.id));
+    actions.appendChild(fav);
+
+    // toggle open
+    const toggle = el('button', 'proxy-toggle');
+    toggle.type='button';
+    toggle.setAttribute('aria-expanded','false');
+    toggle.textContent = 'Open';
+    toggle.addEventListener('click', ()=> togglePanel(card, toggle));
+    actions.appendChild(toggle);
+
+    // test button (tests primary URL)
+    const testBtn = el('button', 'icon-btn');
+    testBtn.type='button';
+    testBtn.textContent = 'Test';
+    testBtn.title = 'Test primary endpoint';
+    testBtn.addEventListener('click', async () => {
+      const status = showTempStatus(card);
+      status.textContent = 'Testing...';
+      status.className = 'status-pill';
+      const url = ensureUrl(firstLinkUrl);
+      const ok = await testUrlReachable(url);
+      status.textContent = ok ? 'Reachable' : 'Unreachable';
+      status.className = ok ? 'status-pill' : 'status-pill';
+      setTimeout(()=> status.textContent = '', 2500);
+    });
+    actions.appendChild(testBtn);
+
+    // set default button
+    const setDefBtn = el('button', 'icon-btn');
+    setDefBtn.type='button';
+    setDefBtn.textContent = 'Set Default';
+    setDefBtn.title = 'Set primary URL as default';
+    setDefBtn.addEventListener('click', ()=> {
+      const url = ensureUrl(firstLinkUrl);
+      if (!url) { alert('No primary URL to set as default.'); return; }
+      setDefaultProxy(url);
+      alert('Default proxy set to: ' + url);
+    });
+    actions.appendChild(setDefBtn);
+
+    // edit / remove only for custom proxies
+    if (proxy.custom) {
+      const editBtn = el('button', 'icon-btn');
+      editBtn.type='button';
+      editBtn.textContent = 'Edit';
+      editBtn.title='Edit proxy';
+      editBtn.addEventListener('click', ()=> editCustomProxy(proxy));
+      actions.appendChild(editBtn);
+
+      const removeBtn = el('button', 'icon-btn');
+      removeBtn.type='button';
+      removeBtn.textContent = 'Remove';
+      removeBtn.title='Remove proxy';
+      removeBtn.addEventListener('click', ()=> removeCustomProxy(proxy));
+      actions.appendChild(removeBtn);
+    }
+
+    header.appendChild(left);
+    header.appendChild(actions);
+    card.appendChild(header);
+
+    // links panel
+    const panel = el('div','links-panel');
+    panel.setAttribute('aria-hidden','true');
+
+    if (Array.isArray(proxy.links) && proxy.links.length) {
+      proxy.links.forEach(ln => {
+        const item = el('div','link-item');
+
+        const leftItem = el('div','link-left');
+        const linkText = el('div','link-text'); linkText.textContent = ln.title || ln.url || '';
+        const linkUrl = el('div','link-url'); linkUrl.textContent = ln.url || '';
+        leftItem.appendChild(linkText); leftItem.appendChild(linkUrl);
+
+        const linkActions = el('div','link-actions');
+        const openBtn = el('button','icon-btn'); openBtn.type='button'; openBtn.textContent='Open';
+        openBtn.addEventListener('click', ()=> {
+          const url = ensureUrl(ln.url);
+          try { window.open(url,'_blank','noopener,noreferrer'); } catch(e){}
+        });
+
+        const copyBtn = el('button','icon-btn'); copyBtn.type='button'; copyBtn.textContent='Copy';
+        copyBtn.addEventListener('click', async ()=> {
+          try {
+            await navigator.clipboard.writeText(ln.url||'');
+            const prev = copyBtn.textContent;
+            copyBtn.textContent = 'Copied';
+            setTimeout(()=> copyBtn.textContent = prev, 1200);
+          } catch(e){ console.warn('copy failed', e); }
+        });
+
+        // add test per link
+        const linkTestBtn = el('button','icon-btn'); linkTestBtn.type='button'; linkTestBtn.textContent='Test';
+        linkTestBtn.addEventListener('click', async ()=> {
+          const prev = linkTestBtn.textContent;
+          linkTestBtn.textContent = '...';
+          const ok = await testUrlReachable(ensureUrl(ln.url));
+          linkTestBtn.textContent = ok ? 'OK' : 'Fail';
+          setTimeout(()=> linkTestBtn.textContent = prev, 1400);
+        });
+
+        linkActions.appendChild(openBtn);
+        linkActions.appendChild(copyBtn);
+        linkActions.appendChild(linkTestBtn);
+
+        item.appendChild(leftItem);
+        item.appendChild(linkActions);
+        panel.appendChild(item);
+      });
+    } else {
+      const empty = el('div'); empty.className = 'muted'; empty.textContent = 'No links configured for this proxy.'; panel.appendChild(empty);
+    }
+
+    const footer = el('div','card-footer');
+    footer.textContent = 'Click "Open" to reveal endpoints. Use "Set Default" to mark the primary URL as default.';
+
+    card.appendChild(panel);
+    card.appendChild(footer);
+    grid.appendChild(card);
+  });
+}
+
+/* Toggle open panels: ensure only one open at a time */
+function togglePanel(card, toggleBtn) {
+  const panel = card.querySelector('.links-panel');
+  const isOpen = panel.classList.contains('open');
+
+  document.querySelectorAll('.links-panel.open').forEach(p => {
+    if (p !== panel) {
+      p.classList.remove('open'); p.setAttribute('aria-hidden','true');
+      const t = p.closest('.peak-card')?.querySelector('.proxy-toggle');
+      if (t) { t.setAttribute('aria-expanded','false'); t.textContent='Open'; }
+    }
+  });
+
+  if (isOpen) {
+    panel.classList.remove('open'); panel.setAttribute('aria-hidden','true');
+    toggleBtn.setAttribute('aria-expanded','false'); toggleBtn.textContent='Open';
+  } else {
+    panel.classList.add('open'); panel.setAttribute('aria-hidden','false');
+    toggleBtn.setAttribute('aria-expanded','true'); toggleBtn.textContent='Close';
+    const firstOpen = panel.querySelector('.icon-btn'); if (firstOpen) firstOpen.focus();
+  }
+}
+
+/* matchesQuery checks name, subtitle, link titles and urls */
+function matchesQuery(p, q) {
+  if (!q) return true;
+  q = q.toLowerCase();
+  if ((p.name||'').toLowerCase().includes(q)) return true;
+  if ((p.subtitle||'').toLowerCase().includes(q)) return true;
+  if (Array.isArray(p.links)) {
+    for (const l of p.links) {
+      if ((l.title||'').toLowerCase().includes(q)) return true;
+      if ((l.url||'').toLowerCase().includes(q)) return true;
+    }
+  }
+  return false;
+}
+
+/* show temporary status in card (reused) */
+function showTempStatus(card) {
+  let s = card.querySelector('.temp-status-pill');
+  if (!s) {
+    s = el('div','status-pill temp-status-pill');
+    s.style.marginLeft = '8px';
+    card.querySelector('.proxy-header')?.appendChild(s);
+  }
+  s.textContent = '';
+  return s;
+}
+
+/* Back / Partners */
+document.getElementById('back-btn').addEventListener('click', () => {
+  const newWin = window.open(dashboardUrl, '_blank', 'noopener,noreferrer');
+  if (!newWin) { try { top.location.assign(dashboardUrl); } catch (e) { window.location.href = dashboardUrl; } }
+});
+document.getElementById('partners-btn').addEventListener('click', () => {
+  const newWin = window.open(partnersUrl, '_blank', 'noopener,noreferrer');
+  if (!newWin) { try { top.location.assign(partnersUrl); } catch (e) { window.location.href = partnersUrl; } }
+});
+
+/* Starfield (lightweight) - unchanged logic */
+(function initStarfield() {
+  const canvas = document.getElementById('peak-starfield');
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  let w = canvas.width = window.innerWidth;
+  let h = canvas.height = window.innerHeight;
+  const stars = [];
+  const count = Math.max(40, Math.floor((w*h)/9000));
+  function rnd(a,b){ return a + Math.random()*(b-a); }
+  for (let i=0;i<count;i++) stars.push({ x:Math.random()*w, y:Math.random()*h, r:rnd(0.4,1.6), s:rnd(0.01,0.07), c: Math.random()<0.6 ? 'rgba(255,255,255,' : 'rgba(0,242,255,' });
+  window.addEventListener('resize', () => { w = canvas.width = window.innerWidth; h = canvas.height = window.innerHeight; });
+  (function frame(){
+    ctx.clearRect(0,0,w,h);
+    for (let i=0;i<stars.length;i++){
+      const s = stars[i];
+      s.y += s.s * (1 + s.r*0.5);
+      if (s.y > h + 10) { s.y = -10; s.x = Math.random()*w; }
+      const a = 0.4 + Math.sin(Date.now()*0.002 + i)*0.45;
+      ctx.beginPath(); ctx.fillStyle = s.c + a + ')'; ctx.arc(s.x, s.y, s.r, 0, Math.PI*2); ctx.fill();
+    }
+    requestAnimationFrame(frame);
+  })();
+})();
+
+/* Expose a small runtime API so other scripts can access only your custom proxies */
+window.peakProxyHub = {
+  getAll: () => getAllProxies().map(p => ({...p})),
+  getCustom: () => (customProxies||[]).map(p => ({...p})),
+  addCustom: (obj) => {
+    if (!obj || (!obj.links || !Array.isArray(obj.links) || !obj.links.length)) return false;
+    const id = obj.id || ('custom-'+Date.now());
+    if (customProxies.some(x => x.id === id)) return false;
+    customProxies.push({...obj, id, custom:true, addedAt: Date.now()});
+    saveJSON(PROXIES_KEY, customProxies);
+    buildHub(currentQuery);
+    return true;
+  },
+  removeCustomById: (id) => { const before = customProxies.length; customProxies = customProxies.filter(p => p.id!==id); saveJSON(PROXIES_KEY, customProxies); buildHub(currentQuery); return customProxies.length < before; },
+  setDefault: (url) => { setDefaultProxy(url); },
+  getDefault: () => defaultProxyUrl
+};
+
+/* init render */
+buildHub();
+searchInput.focus();
+</script>
+</body>
+</html>
